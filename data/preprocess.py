@@ -36,7 +36,7 @@ def preprocess_folder_into_dataset(folder_path: str, save_path: str) -> None:
         df_in = pd.read_csv(path_in)
 
         # accumulate roles
-        if "player_roles" in df_in.columns:
+        if "player_role" in df_in.columns:
             role_set.update(df_in["player_role"].dropna().unique())
 
     role_to_id = {r: i for i, r in enumerate(sorted(role_set))}
@@ -63,7 +63,7 @@ def preprocess_folder_into_dataset(folder_path: str, save_path: str) -> None:
         # ensure necessary columns exist
         required_cols_in = {
             'game_id', 'play_id', 'nfl_id', 'frame_id', 'player_to_predict', 'player_role',
-            'ball_land_x', 'ball_land_y', 'absolute_yardline_number', 'play_direction'  'x', 'y'
+            'ball_land_x', 'ball_land_y', 'absolute_yardline_number', 'play_direction', 'x', 'y'
         }
         required_cols_out = {
             'game_id', 'play_id', 'nfl_id', 'frame_id', 'x', 'y'
