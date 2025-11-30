@@ -328,3 +328,63 @@ Instead we do this step as preprocessing and generate the python object
 ```
 which can then be serialized and stored to the disk using pickle. Since the array allows for $O(1)$ lookups and the data is already stored in Tensor-ready NumPy arrays, the CPU workload should be greatly reduced for the workers of the dataloader.
 
+# Notes #5
+## Temporal Pooling Methods for Per-Agent Summaries
+
+Below is a summary of two common methods for pooling an agent's temporal embeddings into a single per-agent summary.
+
+---
+
+### **A. Simple Averaging (SceneTransformer-style)**
+
+**Method:**
+- After a temporal attention block (or factorized self-attention), take the mean across the temporal dimension:
+  
+\[
+s_a = \frac{1}{t} \sum_{\tau=1}^t h_{a,\tau}
+\]
+
+**Characteristics:**
+- Very cheap computationally.
+- Works well if temporal dependencies have already been mixed by a prior attention block.
+- Erases temporal ordering unless encoded in the embeddings.
+
+**Pros:**
+- Simple to implement.
+- Effective baseline in many multi-agent trajectory prediction tasks.
+
+**Cons:**
+- Loses fine-grained temporal dynamics.
+- May not capture key frames where important events happen.
+
+**Used in:** SceneTransformer (after first factorized block).
+
+---
+
+## **B. Learned Attention Pooling (SetTransformer / AgentFormer style)**
+
+**Method:**
+- Apply attention over the temporal embeddings of each agent to compute a weighted sum:
+  
+\[
+\text{pool}(a) = \mathrm{softmax}(q_a K_a^\top) V_a
+\]
+
+Where:  
+- \(K_a, V_a \in \mathbb{R}^{t \times D}\) are the temporal embeddings for agent `a`.  
+- \(q_a \in \mathbb{R}^D\) is either a learned agent token or derived from the agent's last observed state.  
+- The output `pool(a)` is the agent's temporal summary `s_a`.
+
+**Characteristics:**
+- Allows the model to focus on the most relevant past frames for each agent.
+- Retains temporal saliency better than simple averaging.
+
+**Pros:**
+- Highlights important temporal events.
+- Flexible and learnable; can adapt to agent-specific dynamics.
+
+**Cons:**
+- Slightly higher computational cost than averaging.
+- Requires careful initialization and training to focus attention meaningfully.
+
+**Used in:** AgentFormer, TrajectoryTransformer, and other multi-agent sports models.
