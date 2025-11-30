@@ -8,14 +8,15 @@ field_img = mpimg.imread('/home/patri/code/NFL-Big-Data-Bowl-2026/viz/nfl_field.
 
 def create_play_animation(input_df: pd.DataFrame, output_df: pd.DataFrame, game_id: int, play_id: int, title: str | None=None) -> FuncAnimation:
     """
-        Args:
-            input_df (pd.DataFrame): Must contain the input data for the play to animate, in the format specified in the competition
-            output_df (pd.DataFrame): Must contain the output data for the play to animate, in the format specified in the competition
-            game_id (int): To specify the game
-            play_id (int): To specify the play to animate
-            title (str | None): Optional title for the animation
-        Returns:
-            FuncAnimation: Animation object that can be displayed or saved as a gif/mp4
+    Animates the input/output of a given play from a NFL big data bowl training data dataframe in the format specified by the competition
+    Args:
+        input_df (pd.DataFrame): Must contain the input data for the play to animate, in the format specified in the competition
+        output_df (pd.DataFrame): Must contain the output data for the play to animate, in the format specified in the competition
+        game_id (int): To specify the game
+        play_id (int): To specify the play to animate
+        title (str | None): Optional title for the animation
+    Returns:
+        FuncAnimation: Animation object that can be displayed or saved as a gif/mp4
     """
     input_play_df = input_df[(input_df['game_id'] == game_id) & (input_df['play_id'] == play_id)]
     output_play_df = output_df[(output_df['game_id'] == game_id) & (output_df['play_id'] == play_id)]
