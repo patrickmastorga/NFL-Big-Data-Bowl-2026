@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from components import FeatureEncoder, TemporalEncoder, EncoderBlock, DecoderBlock
+from components import FeatureEncoder, TemporalEncoder, DualTemporalEncoder, EncoderBlock, DecoderBlock
 
 D_MODEL = 256
 N_HEADS = 4
@@ -95,7 +95,7 @@ class Decoder(nn.Module):
     def __init__(self):
         super().__init__()
         self.feature_enc = FeatureEncoder(D_MODEL, N_PLAYER_ROLES)
-        self.temporal_enc = TemporalEncoder(D_MODEL)
+        self.temporal_enc = DualTemporalEncoder(D_MODEL)
         self.layers = nn.ModuleList([DecoderBlock(D_MODEL, N_HEADS) for _ in range(N_ENC_LAYERS)])
         self.to_residual = nn.Sequential(
             nn.Linear(D_MODEL, D_MODEL),
@@ -103,13 +103,22 @@ class Decoder(nn.Module):
             nn.Linear(D_MODEL, 2)
         )
     
-    def forward(self, x: torch.Tensor, z: torch.Tensor, x_padding_mask: torch.Tensor, z_padding_mask: torch.Tensor, roles: torch.Tensor) -> torch.Tensor:
+    def forward(
+            self,
+            x: torch.Tensor,
+            z: torch.Tensor,
+            x_padding_mask: torch.Tensor,
+            z_padding_mask: torch.Tensor,
+            time_remain: torch.Tensor,
+            roles: torch.Tensor
+        ) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): a tensor of shape (B, P, T, 2)
             z (torch.Tensor): a tensor of shape (B, A, D) of encoder outputs
             x_padding_mask (torch.Tensor): a binary tensor of shape (B, P, T) where True means the corresponding token in x is padding
             z_padding_mask (torch.Tensor): a binary tensor of shape (B, A) where True means the corresponding token in z is padding
+            time_remain (Tensor): (B, A, T) long tensor representing how much time is left in the play
             roles (torch.Tensor): the id of each agent of shape (B, P)
         Returns:
             prediction (torch.Tensor): a tensor of shape (B, A, T, 2) of predicted positions
@@ -117,13 +126,13 @@ class Decoder(nn.Module):
         pos = x
         # encode x into a tensor of embeddings
         x = self.feature_enc(x, roles)
-        x = self.temporal_enc(x)                                    # (B, P, T, D)
+        x = self.temporal_enc(x, time_remain) # (B, P, T, D)
         # transform tensor with encoder blocks
         for i in range(N_ENC_LAYERS):
             x = self.layers[i](x, z, x_padding_mask, z_padding_mask)
         # compute predicted outputs
         residual = self.to_residual(x)
-        return pos + residual # network outputs residuals
+        return pos + residual
 
 class BigDataBowlModelV1(nn.Module):
     """
@@ -139,6 +148,7 @@ class BigDataBowlModelV1(nn.Module):
             self,
             pre_xy: torch.Tensor,
             traj_S: torch.Tensor,
+            time_remain: torch.Tensor,
             roles: torch.Tensor,
             ball_landing: torch.Tensor,
             pre_xy_padding_mask: torch.Tensor,
@@ -149,6 +159,7 @@ class BigDataBowlModelV1(nn.Module):
         Args:
             pre_xy (torch.Tensor): a tensor of shape (B, A, T_pre, 2) of x, y positions
             traj_S (torch.Tensor): a tensor of shape (B, P, T_total, 2) of x, y positions
+            time_remain (Tensor): (B, A, T) long tensor representing how much time is left in the play
             roles (torch.Tensor): a tensor of shape (B, A) of player_role ids
             ball_landing (torch.Tensor): a tensor of shape (B, 2) of x, y positions
             pre_xy_padding_mask (torch.Tensor): a binary tensor of shape (B, A, T_pre) where True means the corresponding input in pre_xy is padding
@@ -167,5 +178,5 @@ class BigDataBowlModelV1(nn.Module):
         z_padding_mask = torch.cat([torch.zeros((B, 1), dtype=torch.bool, device=z.device), roles_padding_mask], dim=1) # (B, A + 1)
         # compute predictions
         roles_S = roles[:, :P] # (B, P)
-        prediction = self.decoder(traj_S, traj_S_padding_mask, z, z_padding_mask, roles_S)
+        prediction = self.decoder(traj_S, traj_S_padding_mask, z, z_padding_mask, time_remain, roles_S)
         return prediction

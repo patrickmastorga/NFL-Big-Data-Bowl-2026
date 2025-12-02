@@ -12,9 +12,7 @@ Using the information above, participants should generate prediction models for 
  - Quick passes (less than half a second), deflected passes, and throwaway passes are dropped from the competition.
 
 # Competition Specifics
-
 ## Competition Goal
-
 We are required to implement the predict function:
 ```python
 import pandas as pd
@@ -85,7 +83,6 @@ The output data contains tracking data after the pass is thrown. The output data
  - `y`: Player position along the short axis of the field, generally within 0 - 53.3 yards. (**TARGET TO PREDICT**)
 
 # Notes #1
-
 ## Player Movement Model
 In each play, we are given a subset $S$ of players to predict movement for. This subset usually contains the target receiver and a few defensive backs. Let the ball be snapped at $t = 0$, and let the ball leave the air at $t = T$. Consider one of the players in $S$. For $t \in [0, T]$, let $x_t$ represent the position of the player at time $t$. In the training data, we are given
 $$x_{0}, x_{Δt}, \ldots, x_{T - Δt}, x_{T}$$
@@ -199,116 +196,65 @@ How do we incorperate ball landing position into this model? We can use Goal Con
 [TranSPORTmer]: https://arxiv.org/abs/2410.17785
 
 # Notes #3
-Clarification:
-We will forecast post-throw trajectories for all players in S for each frame until the ball arrives.
+ - Don't hard code out of bounds because player sometimes do go out of bounds. Rather, I propose creating a distance to boundary feature as sideline awareness so that the model doesn't put players in the stands.
 
-We are predicting change in acceleration squared, which can be integrated into x.
+### Create tensor shapes
+Pre-throw: T_pre frames and A total players on the field. Encoder input (A, T_pre, 2) embeds to (A, T_pre, D_model)
+Decoder: There are P players to predict. Decoder input (P,T_post,D_model) output (P,T_post,2).
 
-Normalize the field such that the offense always goes left to right to create symmetry breaking constraint.
+#### Adjustment to 2D
+ - Alternate between self-attention over time and self-attention over players. Attend across time axis in the first and across agents in the second.
+ - Each block will be Attention -> residual -> LayerNorm -> MLP -> residual -> LayerNorm
+ - Encoder has no mask but decoder's self attention over time will use a mask for future frames. Over players and cross attention will have no mask.
 
-Embed positions into a learnable vector.
-
-Don't hard code out of bounds because player sometimes do go out of bounds. Rather, I propose creating a distance to boundary feature as sideline awareness so that the model doesn't put players in the stands.
-
-# Create tensor shapes
-Pre-throw: T_pre frames and A total players on the field. Encoder input (A,T_pre,D_in) embeds to (A,T_pre,D_model)
-
-Decoder: A players to predict. Decoder input (P,T_post,D_model) output (P,T_post,2).
-
-# Adjustment to 2D
-Alternate between self-attention over time and self-attention over players. Attend across time axis in the first and across agents in the second.
-
-Each block will be Attention -> residual -> LayerNorm -> MLP -> residual -> LayerNorm
-
-Encoder has no mask but decoder's self attention over time will use a mask for future frames. Over players and cross attention will ahve no mask.
-
-#GCP
+### GCP
 For the targeted receiver only, the final frame is unmasked to include the final position. Earlier steps remain masked.
 
-#Encoder output for players not in S
-Encoder output: (A,D_model) after factorized blocks and scene summary
-
-For players not in S, they are never decoded post-throw, but their encoder embeddings represent pre-throw context, showing formations and plays
-
+### Encoder output for players not in S
+ - Encoder output: (A, D_model) after factorized blocks and scene summary
+ - For players not in S, they are never decoded post-throw, but their encoder embeddings represent pre-throw context, showing formations and plays
 For players in S:
-Can either use a separate S-only decoder or initialize the first-frame embeddings for each player in S as the ecoder's corresponding player vector. Note that we are adding the ball as an extra agent in the encoder and decoder.
+ - Can either use a separate S-only decoder or initialize the first-frame embeddings for each player in S as the ecoder's corresponding player vector. Note that we are adding the ball as an extra agent in the encoder and decoder.
 
-#Loss
-Frame-wise Huber or MSE on positions, summed over players in S and predicted timesteps. Can also add velocity smoothness to discourage high accelerations. Can also weight targeted receiver more heavily.
+### Loss
+Frame-wise Huber or MSE on positions, summed over players in S and predicted timesteps. Can also add velocity smoothness to discourage high accelerations. Can also weight targeted receiver more heavily. Only compute loss up to true in-air duration.
 
-#Data coding preparation
-Train split by game to avoid leakage from one game to another.
-
-Padding strategy since we have variable inputs and transformers need fixed-shape tensors.
-
-Sequence: ordered data for one play
-
-Batch: collection of plays that are processed in parallel together. Transformers require uniform tensor lengths across a batch.
-
+### Data coding preparation
+ - Train split by game to avoid leakage from one game to another.
+ - Padding strategy since we have variable inputs and transformers need fixed-shape tensors.
+ - Sequence: ordered data for one play
+ - Batch: collection of plays that are processed in parallel together. Transformers require uniform tensor lengths across a batch.
 Transformers can mathematically handle variable-length sequences, but PyTorch cannot batch variable-length tensors. I propose padding player dimensions to max players in each batch and using a binary player_mask for valid vs padded players, which will be used in the self-attention space axis.The same process is used in time-dimension to fit the max_frames.
 
-Only compute loss up to true in-air duration.
+### Pytorch:
+ - MLPEmbed: projects raw features to the model
+ - PositionalEncodingTime: sinusoidal
+ - PositionalEncodingSpace: 2D MLP from position coordinate to embedding
+ - FactorizedAttentionBlock: Time-attention and space-attention sublocks
+ - Encoder: stack of FactorizedAttentionBlocks to (A,D_model)
+ - DecoderBlock: Time and space self-attention, cross-attention to encoder output, MLP
+ - Decoder: Stack of DecoderBlocks embedded to (P,T_post,2)
+ - MotionModel: Combines encoder and decoder, handles masks, shapes, and loss
+
+### Questions
+ - Do we commit to acceleration prediction?
+ - How big should D_model, num_heads, num_layers be given our GPU limits?
+ - Do we use GCP in the v1 or just feed ball landing as an extra agent?
+ - Do we treat the ball as an agent in encoder, decoder, both, or neither?
 
 
-Pytorch:
+### Upper bounds from training data
+ - max_A: 17
+ - max_P: 9
+ - max_T_pre: 115
+ - max_T_post: 94
 
-MLPEmbed: projects raw features to the model
-
-PositionalEncodingTime: sinusoidal
-
-PositionalEncodingSpace: 2D MLP from position coordinate to embedding
-
-FactorizedAttentionBlock: Time-attention and space-attention sublocks
-
-Encoder: stack of FactorizedAttentionBlocks to (A,D_model)
-
-DecoderBlock: Time and space self-attention, cross-attention to encoder output, MLP
-
-Decoder: Stack of DecoderBlocks embedded to (P,T_post,2)
-
-MotionModel: Combines encoder and decoder, handles masks, shapes, and loss
-
-#Questions
-Do we commit to acceleration prediction?
-
-How big should D_model, num_heads, num_layers be given our GPU limits?
-
-Do we use GCP in the v1 or just feed ball landing as an extra agent?
-
-Do we treat the ball as an agent in encoder, decoder, both, or neither?
-
-
-Max boundaries found from code below:
-
-GLOBAL TRAINING STATS:
-
-max_P: 9
-
-max_A: 17
-
-max_T_pre: 115
-
-max_T_post: 94
-
-
-#Order of operations
+### Order of operations
 Encoder (choose one):
-
-space_attn -> MLP -> time_attn -> MLP
-
-time_attn -> space_attn -> MLP
-
-#Version plans
-v1: constant velocity model → sanity check
-
-v2: single-layer transformer
-
-v3: factorized transformer with encoder/decoder
-
-v4: add GCP, attribute embeddings, ball agent, acceleration prediction
+ - space_attn -> MLP -> time_attn -> MLP
+ - time_attn -> space_attn -> MLP
 
 # Notes #4
-
 I feel like it is not too much of a stretch to say that the approach of fetching the tracking data from the CSV and converting it to a Tensor-ready format inside of the `__getitem___` function is way to slow, since the dataframe lookups are $O(n)$ and there are a bunch of python loops used to populate the numpy arrays.
 
 Instead we do this step as preprocessing and generate the python object
@@ -317,74 +263,27 @@ Instead we do this step as preprocessing and generate the python object
     {
         "game_id": int,
         "play_id": int,
-        "pre_xy": np.array([...]),        # shape (P, T_pre, 2)
-        "post_xy": np.array([...]),       # shape (A, T_post, 2)
-        "roles": np.array([...]),         # shape (P,)
-        "roles_S": np.array([...]),       # shape (A,)
+        "pre_xy": np.array([...]),        # shape (A, T_pre, 2)
+        "post_xy": np.array([...]),       # shape (P, T_post, 2)
+        "roles": np.array([...]),         # shape (A,)
         "ball_landing": np.array([x, y]), # shape (2,)
+        "yardline": float,
+        "direction": float,
     },
     ...
 ]
 ```
 which can then be serialized and stored to the disk using pickle. Since the array allows for $O(1)$ lookups and the data is already stored in Tensor-ready NumPy arrays, the CPU workload should be greatly reduced for the workers of the dataloader.
 
-# Notes #5
-## Temporal Pooling Methods for Per-Agent Summaries
+# Notes #5: Model Considerations
+### How do we extract "scene summary" tokens from Encoder?
+1. Pooling: After the first step of the factorized self-attention, we use some method of pooling to condense the sequence of T_pre embeddings into a single token. We then append this to the sequence, and continue attention. At the end, we slice out these tokens as the summary. Inspired by the approach in "SceneTransformer"
+   a. Mean pooling: we take the mean of the embeddings along the time dimension.
+   b. Learned Attention Pooling: Apply attention over the temporal embeddings of each agent to compute a weighted sum:
+      $$ \text{pool}(a) = \mathrm{softmax}(q_a K_a^\top) V_a $$
+2. Accumulation through attention: We insert a static layer of embeddings as a new time step, and then these embeddings attend to the sequence of embeddings. Inspired by the use of a "CLS" token in "TranSPORTmer"
 
-Below is a summary of two common methods for pooling an agent's temporal embeddings into a single per-agent summary.
-
----
-
-### **A. Simple Averaging (SceneTransformer-style)**
-
-**Method:**
-- After a temporal attention block (or factorized self-attention), take the mean across the temporal dimension:
-  
-\[
-s_a = \frac{1}{t} \sum_{\tau=1}^t h_{a,\tau}
-\]
-
-**Characteristics:**
-- Very cheap computationally.
-- Works well if temporal dependencies have already been mixed by a prior attention block.
-- Erases temporal ordering unless encoded in the embeddings.
-
-**Pros:**
-- Simple to implement.
-- Effective baseline in many multi-agent trajectory prediction tasks.
-
-**Cons:**
-- Loses fine-grained temporal dynamics.
-- May not capture key frames where important events happen.
-
-**Used in:** SceneTransformer (after first factorized block).
-
----
-
-## **B. Learned Attention Pooling (SetTransformer / AgentFormer style)**
-
-**Method:**
-- Apply attention over the temporal embeddings of each agent to compute a weighted sum:
-  
-\[
-\text{pool}(a) = \mathrm{softmax}(q_a K_a^\top) V_a
-\]
-
-Where:  
-- \(K_a, V_a \in \mathbb{R}^{t \times D}\) are the temporal embeddings for agent `a`.  
-- \(q_a \in \mathbb{R}^D\) is either a learned agent token or derived from the agent's last observed state.  
-- The output `pool(a)` is the agent's temporal summary `s_a`.
-
-**Characteristics:**
-- Allows the model to focus on the most relevant past frames for each agent.
-- Retains temporal saliency better than simple averaging.
-
-**Pros:**
-- Highlights important temporal events.
-- Flexible and learnable; can adapt to agent-specific dynamics.
-
-**Cons:**
-- Slightly higher computational cost than averaging.
-- Requires careful initialization and training to focus attention meaningfully.
-
-**Used in:** AgentFormer, TrajectoryTransformer, and other multi-agent sports models.
+### How do we incorperate the ball landing position/time into the model?
+1. GCP: We cheat by asusming the final position of the targeted receiver is the landing location of the ball.
+2. Context tokens: We use an MLP to encode this information as a context token which is appended to the encoder output.
+3. 

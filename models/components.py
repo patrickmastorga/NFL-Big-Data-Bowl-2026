@@ -33,8 +33,6 @@ class TemporalEncoder(nn.Module):
     """
     Implementation of the "Attention is All You Need" sinusoidal temporal encodings
     Adapted for a tensor of shape (B, A, T, D) where the encodings are added along the T axis
-    $$ PE_{(t, 2i) =   sin(t/10000^{2i/D})} $$
-    $$ PE_{(t, 2i+1) = cos(t/10000^{2i/D})} $$
     """
     def __init__(self, d_model: int):
         super().__init__()
@@ -56,6 +54,38 @@ class TemporalEncoder(nn.Module):
             embeddings (torch.Tensor): input tensor with temporal encodings added along the T axis
         """
         x = x + self.encodings[:x.shape[2]].unsqueeze(0).unsqueeze(0)  # (B, A, T, D) + (1, 1, T, D) # type: ignore
+        return x
+
+class DualTemporalEncoder(nn.Module):
+    """
+    Implementation of the "Attention is All You Need" sinusoidal temporal encodings
+    Adapted for a tensor of shape (B, A, T, D) where the encodings are added along the T axis
+    Encodings are split into two parts [time_elapsed, time_remaining] and concatenated
+    """
+    def __init__(self, d_model: int):
+        super().__init__()
+        encodings = torch.zeros(MAX_SEQ_LENGTH, d_model // 2)
+        t = torch.arange(0, MAX_SEQ_LENGTH, dtype=torch.float32) # (MAX_SEQ_LENGTH,)
+        k = torch.arange(0, d_model // 2, 2)                          # (d_model // 4,)
+        freq = torch.exp(-k * torch.log(torch.tensor(10000.0) / (d_model // 2)))
+        x = t.unsqueeze(1) * freq # (MAX_SEQ_LENGTH, d_model // 4)
+        encodings[:, 0::2] = torch.sin(x)
+        encodings[:, 1::2] = torch.cos(x)
+
+        self.register_buffer('encodings', encodings)
+
+    def forward(self, x: torch.Tensor, time_remain: torch.Tensor):
+        """
+        Args:
+            x (torch.Tensor): tensor of embedding of shape (B, A, T, D)
+            time_remain (Tensor): (B, A, T) long tensor representing how much time is left in the play
+        Returns:
+            embeddings (torch.Tensor): input tensor with temporal encodings added along the T axis
+        """
+        B, A, T, D = x.shape
+        time_elapsed_enc = self.encodings[:T].unsqueeze(0).unsqueeze(0).expand(B, A, T, -1) # type: ignore
+        time_remain_enc = self.encodings[time_remain] # type: ignore
+        x = x + torch.cat([time_elapsed_enc, time_remain_enc], dim=3)
         return x
 
 class AttentionBlock(nn.Module):

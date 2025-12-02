@@ -77,6 +77,7 @@ def collate_plays(batch_list: list[dict[str, torch.Tensor]]) -> dict[str, torch.
         {
             "pre_xy": torch.Tensor([...]),       # (B, A_max, T_pre_max, 2)
             "traj_S": torch.Tensor([...]),       # (B, P_max, T_total_max, 2)
+            "time_remain": torch.Tensor([...]),  # (B, P_max, T_total_max)
             "roles": torch.Tensor([...]),        # (B, A_max)
             "ball_landing": torch.Tensor([...]), # (B, 2)
 
@@ -96,6 +97,7 @@ def collate_plays(batch_list: list[dict[str, torch.Tensor]]) -> dict[str, torch.
     # batched tensors
     pre_xy_batch = torch.zeros(B, A_max, T_pre_max, 2, dtype=torch.float32)
     traj_S_batch = torch.zeros(B, P_max, T_total_max, 2, dtype=torch.float32)
+    time_remain_batch = torch.zeros(B, P_max, T_total_max, dtype=torch.long)
     roles_batch = torch.zeros(B, A_max, dtype=torch.long)
     ball_landing_batch = torch.zeros(B, 2, dtype=torch.float32)
 
@@ -117,6 +119,9 @@ def collate_plays(batch_list: list[dict[str, torch.Tensor]]) -> dict[str, torch.
         roles_batch[i, :A] = s["roles"]
         ball_landing_batch[i, :] = s["ball_landing"]
 
+        time_remain = torch.arange(T_total - 1, -1, -1, dtype=torch.long)
+        time_remain_batch[i, :P, :T_total] = time_remain.unsqueeze(0).expand(P, T_total)
+
         pre_xy_padding_mask[i, :A, :T_pre] = False
         traj_S_padding_mask[i, :P, :T_total] = False
         roles_padding_mask[i, :A] = False
@@ -124,6 +129,7 @@ def collate_plays(batch_list: list[dict[str, torch.Tensor]]) -> dict[str, torch.
     return {
         "pre_xy": pre_xy_batch,             # (B, A_max, T_pre_max, 2)
         "traj_S": traj_S_batch,             # (B, P_max, T_total_max, 2)
+        "time_remain": time_remain_batch,   # (B, P_max, T_total_max)
         "roles": roles_batch,               # (B, A_max)
         "ball_landing": ball_landing_batch, # (B, 2)
 
