@@ -286,4 +286,4 @@ which can then be serialized and stored to the disk using pickle. Since the arra
 ### How do we incorperate the ball landing position/time into the model?
 1. GCP: We cheat by asusming the final position of the targeted receiver is the landing location of the ball.
 2. Context tokens: We use an MLP to encode this information as a context token which is appended to the encoder output.
-3. 
+3. Dual Temporal Encoding: Use two different temporal encodings in the decoder, one for time elapsed and one for time remaining, concatenate
