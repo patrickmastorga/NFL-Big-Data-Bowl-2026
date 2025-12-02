@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+MAX_SEQ_LENGTH = 256
+
 class FeatureEncoder(nn.Module):
     """
     Encodes the (x, y) position and agent_id features into a single embedding using an MLP
@@ -24,7 +26,8 @@ class FeatureEncoder(nn.Module):
         """
         pos_embedding = self.pos_embedding(x)                         # (B, A, T, D)
         agent_embedding = self.agent_embedding(agent_id).unsqueeze(2) # (B, A, 1, D)
-        return self.transform(pos_embedding + agent_embedding)
+        embeddings = self.transform(pos_embedding + agent_embedding)
+        return embeddings
 
 class TemporalEncoder(nn.Module):
     """
@@ -35,14 +38,13 @@ class TemporalEncoder(nn.Module):
     """
     def __init__(self, d_model: int):
         super().__init__()
-        MAX_LENGTH = 256
-        encodings = torch.zeros(MAX_LENGTH, d_model)
-        t = torch.arange(0, MAX_LENGTH, dtype=torch.float32) # (MAX_LENGTH,)
-        k = torch.arange(0, d_model, 2)                      # (d_model // 2,)
+        encodings = torch.zeros(MAX_SEQ_LENGTH, d_model)
+        t = torch.arange(0, MAX_SEQ_LENGTH, dtype=torch.float32) # (MAX_SEQ_LENGTH,)
+        k = torch.arange(0, d_model, 2)                          # (d_model // 2,)
         freq = torch.exp(-k * torch.log(torch.tensor(10000.0) / d_model))
-        x = t.unsqueeze(1) * freq # (MAX_LENGTH, d_model // 2)
-        encodings[:, 0::2] = torch.sin(t * freq)
-        encodings[:, 1::2] = torch.cos(t * freq)
+        x = t.unsqueeze(1) * freq # (MAX_SEQ_LENGTH, d_model // 2)
+        encodings[:, 0::2] = torch.sin(x)
+        encodings[:, 1::2] = torch.cos(x)
 
         self.register_buffer('encodings', encodings)
 
@@ -53,12 +55,12 @@ class TemporalEncoder(nn.Module):
         Returns:
             embeddings (torch.Tensor): input tensor with temporal encodings added along the T axis
         """
-        encodings = self.encodings[:x.shape[2]].unsqueeze(0).unsqueeze(0)  # (1, 1, T, D) # type: ignore
-        return x + encodings
+        x = x + self.encodings[:x.shape[2]].unsqueeze(0).unsqueeze(0)  # (B, A, T, D) + (1, 1, T, D) # type: ignore
+        return x
 
-class SelfAttentionBlock(nn.Module):
+class AttentionBlock(nn.Module):
     """
-    "Attention is All You Need" style self-attention block
+    "Attention is All You Need" style attention block
     """
     def __init__(self, d_model: int, num_heads: int, d_ff: int | None = None, dropout: float = 0.1):
         super().__init__()
@@ -74,61 +76,139 @@ class SelfAttentionBlock(nn.Module):
         )
         self.layer_norm2 = nn.LayerNorm(d_model)
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor | None = None, is_causal: bool = False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, m: torch.Tensor, m_padding_mask: torch.Tensor | None = None, is_causal: bool = False) -> torch.Tensor:
         """
         Args:
-            x (torch.Tensor): a tensor of shape (B, S, D), where S is the sequence we are attending over
-            padding_mask (torch.Tensor): a binary tensor of shape (B, S) where True means the corresponding token in x is padding
+            x (torch.Tensor): a tensor of shape (B, S1, D) that is the input to the operation
+            m (torch.Tensor) a tensor of shape (B, S1, D) where S1 is the sequence each token in x is attending over
+            m_padding_mask (torch.Tensor): a binary tensor of shape (B, S1) where True means the corresponding entry in m is padding
             is_causal (bool): if true, applies causal masking
         Returns:
-            transformed (torch.Tensor): a transformed tensor of shape (B, S, D)
+            transformed (torch.Tensor): a transformed tensor of shape (B, S1, D)
         """
-        x_attn, _ = self.attn(x, x, x, key_padding_mask=padding_mask, is_casual=is_causal)
+        x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, is_casual=is_causal)
         x = self.layer_norm1(x + x_attn)
         x_ff = self.feed_foward(x)
-        return self.layer_norm2(x + x_ff)
+        x = self.layer_norm2(x + x_ff)
+        return x
 
 class SelfAttentionBlockTime(nn.Module):
     """
-    Self-attention block where the attention is preformed along the 3rd dimension of an input of shape [B, A, T, D]
+    Self-attention block where the self-attention is preformed along the 3rd dimension of an input of shape [B, A, T, D]
     """
     def __init__(self, d_model: int, num_heads: int, d_ff: int | None = None, dropout: float = 0.1):
         super().__init__()
-        self.self_attn = SelfAttentionBlock(d_model, num_heads, d_ff, dropout)
+        self.self_attn = AttentionBlock(d_model, num_heads, d_ff, dropout)
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor, is_causal: bool = False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_padding_mask: torch.Tensor, is_causal: bool = False) -> torch.Tensor:
         """
         Args:
-            x (torch.Tensor): a tensor of shape (B, A, T, D), where A is the sequence we are attending over
-            padding_mask (torch.Tensor): a binary tensor of shape (B, A, T) where True means the corresponding token in x is padding
+            x (torch.Tensor): a tensor of shape (B, A, T, D), where T is the sequence we are attending over
+            x_padding_mask (torch.Tensor): a binary tensor of shape (B, A, T) where True means the corresponding token in x is padding
             is_causal (bool): if true, applies causal masking
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
         B, A, T, D = x.shape
+        # collapse the agents and batch dimension together
         x = x.reshape(B*A, T, D)
-        padding_mask = padding_mask.reshape(B*A, T)
-        x = self.self_attn(x, padding_mask=padding_mask, is_causal=is_causal)
-        return x.reshape(B, A, T, D)
+        x_padding_mask = x_padding_mask.reshape(B*A, T)
+        # preform attention and reshape
+        x = self.self_attn(x, x, x_padding_mask, is_causal)
+        x = x.reshape(B, A, T, D)
+        return x
 
 class SelfAttentionBlockAgents(nn.Module):
     """
-    Self-attention block where the attention is preformed along the 2nd dimension of an input of shape [B, A, T, D]
+    Self-attention block where the self-attention is preformed along the 2nd dimension of an input of shape [B, A, T, D]
     """
     def __init__(self, d_model: int, num_heads: int, d_ff: int | None = None, dropout: float = 0.1):
         super().__init__()
-        self.self_attn = SelfAttentionBlock(d_model, num_heads, d_ff, dropout)
+        self.self_attn = AttentionBlock(d_model, num_heads, d_ff, dropout)
 
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_padding_mask: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): a tensor of shape (B, A, T, D), where A is the sequence we are attending over
-            padding_mask (torch.Tensor): a binary tensor of shape (B, A, T) where True means the corresponding token in x is padding
+            x_padding_mask (torch.Tensor): a binary tensor of shape (B, A, T) where True means the corresponding token in x is padding
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
         B, A, T, D = x.shape
+        # collapse the time and batch dimension together
         x = x.permute(0, 2, 1, 3).reshape(B*T, A, D)
-        padding_mask = padding_mask.permute(0, 2, 1).reshape(B*T, A)
-        x = self.self_attn(x)
-        return x.reshape(B, T, A, D).permute(0, 2, 1, 3)
+        x_padding_mask = x_padding_mask.permute(0, 2, 1).reshape(B*T, A)
+        # preform attention and reshape
+        x = self.self_attn(x, x, x_padding_mask)
+        x = x.reshape(B, T, A, D).permute(0, 2, 1, 3)
+        return x
+
+class CrossAttentionBlockAgents(nn.Module):
+    """
+    Cross-attention block where cross-attention is preformed along the 2nd dimension of an input of shape [B, A, T, D] onto a sequence of shape [B, S, D]
+    """
+    def __init__(self, d_model: int, num_heads: int, d_ff: int | None = None, dropout: float = 0.1):
+        super().__init__()
+        self.cross_attn = AttentionBlock(d_model, num_heads, d_ff, dropout)
+
+    def forward(self, x: torch.Tensor, m: torch.Tensor, m_padding_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): a tensor of shape (B, A, T, D), where T is the sequence we are attending over
+            m (torch.Tensor) a tensor of shape (B, S, D) where 1 is the sequence each agent in x is attending over
+            m_padding_mask (torch.Tensor): a binary tensor of shape (B, S) where True means the corresponding entry in m is padding
+        Returns:
+            transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
+        """
+        B, A, T, D = x.shape
+        _, S, _ = m.shape
+
+        # collapse the time and batch dimension together
+        x = x.permute(0, 2, 1, 3).reshape(B*T, A, D)
+        # repeat memory for each time step T and cllapse with batch
+        m = m.unsqueeze(1).expand(-1, T, -1, -1).reshape(B*T, S, D)
+        m_padding_mask = m_padding_mask.unsqueeze(1).expand(-1, T, -1).reshape(B*T, S)
+        # preform attention and reshape
+        x = self.cross_attn(x, m, m_padding_mask)
+        x = x.reshape(B, T, A, D).permute(0, 2, 1, 3)
+        return x
+
+class EncoderBlock(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int | None = None, dropout: float = 0.1):
+        super().__init__()
+        self.attn_t = SelfAttentionBlockTime(d_model, num_heads, d_ff, dropout)
+        self.attn_a = SelfAttentionBlockAgents(d_model, num_heads, d_ff, dropout)
+    
+    def forward(self, x: torch.Tensor, x_padding_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): a tensor of shape (B, A, T, D)
+            x_padding_mask (torch.Tensor): a binary tensor of shape (B, A, T) where True means the corresponding token in x is padding
+        Returns:
+            transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
+        """
+        x = self.attn_t(x, x_padding_mask)
+        x = self.attn_a(x, x_padding_mask)
+        return x
+
+class DecoderBlock(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int | None = None, dropout: float = 0.1):
+        super().__init__()
+        self.attn_t = SelfAttentionBlockTime(d_model, num_heads, d_ff, dropout)
+        self.attn_a = SelfAttentionBlockAgents(d_model, num_heads, d_ff, dropout)
+        self.cross_attn = CrossAttentionBlockAgents(d_model, num_heads, d_ff, dropout)
+    
+    def forward(self, x: torch.Tensor, z: torch.Tensor, x_padding_mask: torch.Tensor, z_padding_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): a tensor of shape (B, A, T, D)
+            z (torch.Tensor): a tensor of shape (B, S, D) of encoder outputs
+            x_padding_mask (torch.Tensor): a binary tensor of shape (B, A, T) where True means the corresponding token in x is padding
+            z_padding_mask (torch.Tensor): a binary tensor of shape (B, S) where True means the corresponding token in z is padding
+        Returns:
+            transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
+        """
+        x = self.attn_t(x, x_padding_mask, is_causal=True)
+        x = self.attn_a(x, x_padding_mask)
+        x = self.cross_attn(x, z, z_padding_mask)
+        return x

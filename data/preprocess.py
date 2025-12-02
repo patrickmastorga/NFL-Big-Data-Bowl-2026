@@ -16,8 +16,9 @@ def preprocess_folder_into_dataset(folder_path: str, save_path: str) -> None:
             "pre_xy": np.array([...]),        # shape (A, T_pre, 2)
             "post_xy": np.array([...]),       # shape (P, T_post, 2)
             "roles": np.array([...]),         # shape (A,)
-            "roles_S": np.array([...]),       # shape (P,)
             "ball_landing": np.array([x, y]), # shape (2,)
+            "yardline": float,
+            "direction": float,
         },
         ...
     ] 
