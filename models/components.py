@@ -116,7 +116,7 @@ class AttentionBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, S1, D)
         """
-        x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, is_casual=is_causal)
+        x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, is_causal=is_causal)
         x = self.layer_norm1(x + x_attn)
         x_ff = self.feed_forward(x)
         x = self.layer_norm2(x + x_ff)
