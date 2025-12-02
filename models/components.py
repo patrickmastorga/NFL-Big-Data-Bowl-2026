@@ -16,7 +16,7 @@ class FeatureEncoder(nn.Module):
             nn.Linear(d_model, d_model)
         )
     
-    def foward(self, x: torch.Tensor, agent_id: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, agent_id: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): the position data of shape (B, A, T, 2)
@@ -98,7 +98,7 @@ class AttentionBlock(nn.Module):
             d_ff = 4 * d_model
         self.attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, dropout=dropout, batch_first=True)
         self.layer_norm1 = nn.LayerNorm(d_model)
-        self.feed_foward = nn.Sequential(
+        self.feed_forward = nn.Sequential(
             nn.Linear(d_model, d_ff),
             nn.GELU(),
             nn.Linear(d_ff, d_model),
@@ -118,7 +118,7 @@ class AttentionBlock(nn.Module):
         """
         x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, is_casual=is_causal)
         x = self.layer_norm1(x + x_attn)
-        x_ff = self.feed_foward(x)
+        x_ff = self.feed_forward(x)
         x = self.layer_norm2(x + x_ff)
         return x
 

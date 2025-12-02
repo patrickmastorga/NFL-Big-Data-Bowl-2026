@@ -41,7 +41,7 @@ class Encoder(nn.Module):
         self.summary_tokens = nn.Embedding(N_PLAYER_ROLES + 1, D_MODEL)
         self.layers = nn.ModuleList([EncoderBlock(D_MODEL, N_HEADS) for _ in range(N_ENC_LAYERS)])
     
-    def foward(self, x: torch.Tensor, x_padding_mask: torch.Tensor, roles: torch.Tensor, roles_padding_mask: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_padding_mask: torch.Tensor, roles: torch.Tensor, roles_padding_mask: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): the position data of shape (B, A, T, 2)
@@ -77,7 +77,7 @@ class BallLandingMLP(nn.Module):
             nn.Linear(D_MODEL, D_MODEL)
         )
 
-    def foward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): a tensor of ball landing position data of shape (B, 2)
