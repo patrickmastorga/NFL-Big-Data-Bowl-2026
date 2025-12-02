@@ -96,7 +96,7 @@ class Decoder(nn.Module):
         super().__init__()
         self.feature_enc = FeatureEncoder(D_MODEL, N_PLAYER_ROLES)
         self.temporal_enc = DualTemporalEncoder(D_MODEL)
-        self.layers = nn.ModuleList([DecoderBlock(D_MODEL, N_HEADS) for _ in range(N_ENC_LAYERS)])
+        self.layers = nn.ModuleList([DecoderBlock(D_MODEL, N_HEADS) for _ in range(N_DEC_LAYERS)])
         self.to_residual = nn.Sequential(
             nn.Linear(D_MODEL, D_MODEL),
             nn.GELU(),
