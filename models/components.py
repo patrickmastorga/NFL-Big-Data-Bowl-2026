@@ -118,12 +118,13 @@ class AttentionBlock(nn.Module):
         """
         Args:
             x (torch.Tensor): a tensor of shape (B, S1, D) that is the input to the operation
-            m (torch.Tensor) a tensor of shape (B, S1, D) where S1 is the sequence each token in x is attending over
-            m_padding_mask (torch.Tensor): a binary tensor of shape (B, S1) where True means the corresponding entry in m is padding
-            is_causal (bool): if true, applies causal masking
+            m (torch.Tensor) a tensor of shape (B, S2, D) where S1 is the sequence each token in x is attending over
+            m_padding_mask (torch.Tensor): a binary tensor of shape (B, S2) where True means the corresponding entry in m is padding
+            attn_mask (torch.Tensor): a binary tensor of shape (S2, S1) where True means the input embedding does not attend to the target embedding
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, S1, D)
         """
+        print("Hello, World! attn block")
         x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, attn_mask=attn_mask)
         x = self.layer_norm1(x + x_attn)
         x_ff = self.feed_forward(x)
