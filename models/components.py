@@ -125,6 +125,8 @@ class AttentionBlock(nn.Module):
             transformed (torch.Tensor): a transformed tensor of shape (B, S1, D)
         """
         x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, attn_mask=attn_mask)
+        if torch.isnan(x_attn).any().item():
+            raise RuntimeError("NAN")
         x = self.layer_norm1(x + x_attn)
         x_ff = self.feed_forward(x)
         x = self.layer_norm2(x + x_ff)
@@ -168,8 +170,6 @@ class SelfAttentionBlockTime(nn.Module):
             print(f'causal: {torch.isnan(x).any().item()}')
         else:
             x = self.self_attn(x, x, x_padding_mask)
-            if torch.isnan(x).any().item():
-                raise RuntimeError("NAN")
             print(f'not causal: {torch.isnan(x).any().item()}')
         x = x.reshape(B, A, T, D)
         return x
