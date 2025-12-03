@@ -124,7 +124,6 @@ class AttentionBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, S1, D)
         """
-        print("Hello, World! attn block")
         x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, attn_mask=attn_mask)
         x = self.layer_norm1(x + x_attn)
         x_ff = self.feed_forward(x)
@@ -160,14 +159,17 @@ class SelfAttentionBlockTime(nn.Module):
         """
         B, A, T, D = x.shape
         # collapse the agents and batch dimension together
-        print('Hello, World! Time')
         x = x.reshape(B*A, T, D)
         x_padding_mask = x_padding_mask.reshape(B*A, T)
         # preform attention and reshape
         if self.is_causal:
-            x = self.self_attn(x, x, x_padding_mask, self.causal_mask[:T, :T]) # type: ignore
+            mask = self.causal_mask[:T, :T] # type: ignore
+            print(mask)
+            x = self.self_attn(x, x, x_padding_mask, ) # type: ignore
+            print(f'causal: {torch.isnan(x).any().item()}')
         else:
             x = self.self_attn(x, x, x_padding_mask)
+            print(f'not causal: {torch.isnan(x).any().item()}')
         x = x.reshape(B, A, T, D)
         return x
 
@@ -261,11 +263,7 @@ class DecoderBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
-        print('Hello, World!')
         x = self.attn_t(x, x_padding_mask)
-        print(f'attn_t: {torch.isnan(x).any().item()}')
         x = self.attn_a(x, x_padding_mask)
-        print(f'attn_a: {torch.isnan(x).any().item()}')
         x = self.cross_attn(x, z, z_padding_mask)
-        print(f'cross_attn: {torch.isnan(x).any().item()}')
         return x
