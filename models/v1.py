@@ -61,7 +61,6 @@ class Encoder(nn.Module):
         x_padding_mask = torch.cat([roles_padding_mask.unsqueeze(2), x_padding_mask], dim=2) # (B, A, T+1, D)
         # transform tensor with encoder blocks
         for i in range(N_ENC_LAYERS):
-            print('Hello World! Enc:', i)
             x = self.layers[i](x, x_padding_mask)
         summary_tokens = x[:, :, -1, :] # (B, A, D)
         return summary_tokens

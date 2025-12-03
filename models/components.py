@@ -124,21 +124,7 @@ class AttentionBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, S1, D)
         """
-        print(x.shape)
-        print(m.shape)
-        print("x:", x.min().item(), x.max().item(), x.dtype)
-        print("m:", m.min().item(), m.max().item(), m.dtype)
-
-        if m_padding_mask is not None:
-            print("m_padding_mask", m_padding_mask.shape, m_padding_mask.dtype)
-
-        if attn_mask is not None:
-            print("attn_mask", attn_mask.shape, attn_mask.dtype)
-
         x_attn, _ = self.attn.forward(x, m, m, key_padding_mask=m_padding_mask, attn_mask=attn_mask)
-        if torch.isnan(x_attn).any().item():
-            print(x_attn)
-            raise RuntimeError("NAN")
         x = self.layer_norm1(x + x_attn)
         x_ff = self.feed_forward(x)
         x = self.layer_norm2(x + x_ff)
@@ -179,10 +165,8 @@ class SelfAttentionBlockTime(nn.Module):
         if self.is_causal:
             mask = self.causal_mask[:T, :T] # type: ignore
             x = self.self_attn(x, x, x_padding_mask, mask)
-            print(f'causal: {torch.isnan(x).any().item()}')
         else:
             x = self.self_attn(x, x, x_padding_mask)
-            print(f'not causal: {torch.isnan(x).any().item()}')
         x = x.reshape(B, A, T, D)
         return x
 
@@ -256,7 +240,6 @@ class EncoderBlock(nn.Module):
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
         x = self.attn_t(x, x_padding_mask)
-        print(f'enc: {torch.isnan(x).any().item()}')
         x = self.attn_a(x, x_padding_mask)
         return x
 
