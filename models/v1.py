@@ -126,12 +126,16 @@ class Decoder(nn.Module):
         pos = x
         # encode x into a tensor of embeddings
         x = self.feature_enc(x, roles)
+        print(f'feature_enc: {torch.isnan(x).any().item()}')
         x = self.temporal_enc(x, time_remain) # (B, P, T, D)
+        print(f'temporal_enc: {torch.isnan(x).any().item()}')
         # transform tensor with decoder blocks
         for i in range(N_DEC_LAYERS):
             x = self.layers[i](x, z, x_padding_mask, z_padding_mask)
+        print(f'layers: {torch.isnan(x).any().item()}')
         # compute predicted outputs
         residual = self.to_residual(x)
+        print(f'to_residual: {torch.isnan(x).any().item()}')
         return pos + residual
 
 class BigDataBowlModelV1(nn.Module):
@@ -171,25 +175,12 @@ class BigDataBowlModelV1(nn.Module):
         B, A, T_pre, _ = pre_xy.shape
         _, P, T_total, _ = traj_S.shape
         # compute agent summaries
-        print(f'pre_xy: {torch.isnan(pre_xy).any().item()}')
-        print(f'traj_S: {torch.isnan(traj_S).any().item()}')
-        print(f'time_remain: {torch.isnan(time_remain).any().item()}')
-        print(f'roles: {torch.isnan(roles).any().item()}')
-        print(f'ball_landing: {torch.isnan(ball_landing).any().item()}')
-        print(f'pre_xy_padding_mask: {torch.isnan(pre_xy_padding_mask).any().item()}')
-        print(f'traj_S_padding_mask: {torch.isnan(traj_S_padding_mask).any().item()}')
-        print(f'roles_padding_mask: {torch.isnan(roles_padding_mask).any().item()}')
         z = self.encoder(pre_xy, pre_xy_padding_mask, roles, roles_padding_mask) # (B, A, D)
-        print(f'z: {torch.isnan(z).any().item()}')
         # append ball landing encoding to agent summaries and update mask
         ball_enc = self.ball_landing_mlp(ball_landing)       # (B, D)
-        print(f'ball_enc: {torch.isnan(ball_enc).any().item()}')
         z = torch.cat([ball_enc.unsqueeze(1), z], dim=1)     # (B, A + 1, D)
-        print(f'z: {torch.isnan(z).any().item()}')
         z_padding_mask = torch.cat([torch.zeros((B, 1), dtype=torch.bool, device=z.device), roles_padding_mask], dim=1) # (B, A + 1)
-        print(f'z_padding_mask: {torch.isnan(z_padding_mask).any().item()}')
         # compute predictions
         roles_S = roles[:, :P] # (B, P)
         prediction = self.decoder(traj_S, z, traj_S_padding_mask, z_padding_mask, time_remain, roles_S)
-        print(f'prediction: {torch.isnan(prediction).any().item()}')
         return prediction
