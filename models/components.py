@@ -126,13 +126,15 @@ class AttentionBlock(nn.Module):
         """
         print(x.shape)
         print(m.shape)
+        print("x:", x.min().item(), x.max().item(), x.dtype)
+        print("m:", m.min().item(), m.max().item(), m.dtype)
+
         if m_padding_mask is not None:
-            print(m_padding_mask.shape)
-        print(attn_mask)
-        if (x.abs() > 1e6).any():
-            print("HUGE values in x:", x.max())
-        if (m.abs() > 1e6).any():
-            print("HUGE values in m:", m.max())
+            print("m_padding_mask", m_padding_mask.shape, m_padding_mask.dtype)
+
+        if attn_mask is not None:
+            print("attn_mask", attn_mask.shape, attn_mask.dtype)
+
         x_attn, _ = self.attn.forward(x, m, m, key_padding_mask=m_padding_mask, attn_mask=attn_mask)
         if torch.isnan(x_attn).any().item():
             print(x_attn)
