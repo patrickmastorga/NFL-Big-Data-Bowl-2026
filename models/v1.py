@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from components import FeatureEncoder, TemporalEncoder, DualTemporalEncoder, EncoderBlock, DecoderBlock
+from models.components import FeatureEncoder, TemporalEncoder, DualTemporalEncoder, EncoderBlock, DecoderBlock
 
 D_MODEL = 256
 N_HEADS = 4
