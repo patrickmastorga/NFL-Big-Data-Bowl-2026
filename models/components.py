@@ -168,6 +168,8 @@ class SelfAttentionBlockTime(nn.Module):
             print(f'causal: {torch.isnan(x).any().item()}')
         else:
             x = self.self_attn(x, x, x_padding_mask)
+            if torch.isnan(x).any().item():
+                raise RuntimeError("NAN")
             print(f'not causal: {torch.isnan(x).any().item()}')
         x = x.reshape(B, A, T, D)
         return x
