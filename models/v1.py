@@ -126,16 +126,12 @@ class Decoder(nn.Module):
         pos = x
         # encode x into a tensor of embeddings
         x = self.feature_enc(x, roles)
-        print(f'feature_enc: {torch.isnan(x).any().item()}')
         x = self.temporal_enc(x, time_remain) # (B, P, T, D)
-        print(f'temporal_enc: {torch.isnan(x).any().item()}')
         # transform tensor with decoder blocks
         for i in range(N_DEC_LAYERS):
             x = self.layers[i](x, z, x_padding_mask, z_padding_mask)
-        print(f'layers: {torch.isnan(x).any().item()}')
         # compute predicted outputs
         residual = self.to_residual(x)
-        print(f'to_residual: {torch.isnan(x).any().item()}')
         return pos + residual
 
 class BigDataBowlModelV1(nn.Module):

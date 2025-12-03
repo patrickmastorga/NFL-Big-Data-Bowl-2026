@@ -260,6 +260,9 @@ class DecoderBlock(nn.Module):
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
         x = self.attn_t(x, x_padding_mask)
+        print(f'attn_t: {torch.isnan(x).any().item()}')
         x = self.attn_a(x, x_padding_mask)
+        print(f'attn_a: {torch.isnan(x).any().item()}')
         x = self.cross_attn(x, z, z_padding_mask)
+        print(f'cross_attn: {torch.isnan(x).any().item()}')
         return x
