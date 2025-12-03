@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-MAX_SEQ_LENGTH = 256
+MAX_T = 256
 
 class FeatureEncoder(nn.Module):
     """
@@ -36,8 +36,8 @@ class TemporalEncoder(nn.Module):
     """
     def __init__(self, d_model: int):
         super().__init__()
-        encodings = torch.zeros(MAX_SEQ_LENGTH, d_model)
-        t = torch.arange(0, MAX_SEQ_LENGTH, dtype=torch.float32) # (MAX_SEQ_LENGTH,)
+        encodings = torch.zeros(MAX_T, d_model)
+        t = torch.arange(0, MAX_T, dtype=torch.float32) # (MAX_SEQ_LENGTH,)
         k = torch.arange(0, d_model, 2)                          # (d_model // 2,)
         freq = torch.exp(-k * torch.log(torch.tensor(10000.0) / d_model))
         x = t.unsqueeze(1) * freq # (MAX_SEQ_LENGTH, d_model // 2)
@@ -64,9 +64,9 @@ class DualTemporalEncoder(nn.Module):
     """
     def __init__(self, d_model: int):
         super().__init__()
-        encodings = torch.zeros(MAX_SEQ_LENGTH, d_model // 2)
-        t = torch.arange(0, MAX_SEQ_LENGTH, dtype=torch.float32) # (MAX_SEQ_LENGTH,)
-        k = torch.arange(0, d_model // 2, 2)                          # (d_model // 4,)
+        encodings = torch.zeros(MAX_T, d_model // 2)
+        t = torch.arange(0, MAX_T, dtype=torch.float32) # (MAX_SEQ_LENGTH,)
+        k = torch.arange(0, d_model // 2, 2)            # (d_model // 4,)
         freq = torch.exp(-k * torch.log(torch.tensor(10000.0) / (d_model // 2)))
         x = t.unsqueeze(1) * freq # (MAX_SEQ_LENGTH, d_model // 4)
         encodings[:, 0::2] = torch.sin(x)
@@ -92,8 +92,16 @@ class AttentionBlock(nn.Module):
     """
     "Attention is All You Need" style attention block
     """
-    def __init__(self, d_model: int, num_heads: int, d_ff: int | None = None, dropout: float = 0.1):
+    def __init__(
+            self,
+            d_model: int,
+            num_heads: int,
+            d_ff: int | None = None,
+            dropout: float = 0.1,
+            is_causal: bool = False
+        ):
         super().__init__()
+        self.is_causal = is_causal
         if d_ff is None:
             d_ff = 4 * d_model
         self.attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, dropout=dropout, batch_first=True)
@@ -106,7 +114,7 @@ class AttentionBlock(nn.Module):
         )
         self.layer_norm2 = nn.LayerNorm(d_model)
 
-    def forward(self, x: torch.Tensor, m: torch.Tensor, m_padding_mask: torch.Tensor | None = None, is_causal: bool = False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, m: torch.Tensor, m_padding_mask: torch.Tensor | None = None, attn_mask: torch.Tensor | None = None) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): a tensor of shape (B, S1, D) that is the input to the operation
@@ -116,7 +124,7 @@ class AttentionBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, S1, D)
         """
-        x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, is_causal=is_causal)
+        x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, attn_mask=attn_mask)
         x = self.layer_norm1(x + x_attn)
         x_ff = self.feed_forward(x)
         x = self.layer_norm2(x + x_ff)
@@ -126,11 +134,21 @@ class SelfAttentionBlockTime(nn.Module):
     """
     Self-attention block where the self-attention is preformed along the 3rd dimension of an input of shape [B, A, T, D]
     """
-    def __init__(self, d_model: int, num_heads: int, d_ff: int | None = None, dropout: float = 0.1):
+    def __init__(
+            self,
+            d_model: int,
+            num_heads: int,
+            d_ff: int | None = None,
+            dropout: float = 0.1,
+            is_causal: bool = False
+        ):
         super().__init__()
+        self.is_causal = is_causal
         self.self_attn = AttentionBlock(d_model, num_heads, d_ff, dropout)
+        if self.is_causal:
+            self.register_buffer("causal_mask", torch.triu(torch.ones(MAX_T, MAX_T), 1).bool())
 
-    def forward(self, x: torch.Tensor, x_padding_mask: torch.Tensor, is_causal: bool = False) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, x_padding_mask: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): a tensor of shape (B, A, T, D), where T is the sequence we are attending over
@@ -144,7 +162,10 @@ class SelfAttentionBlockTime(nn.Module):
         x = x.reshape(B*A, T, D)
         x_padding_mask = x_padding_mask.reshape(B*A, T)
         # preform attention and reshape
-        x = self.self_attn(x, x, x_padding_mask, is_causal)
+        if self.is_causal:
+            x = self.self_attn(x, x, x_padding_mask, self.causal_mask[:T, :T]) # type: ignore
+        else:
+            x = self.self_attn(x, x, x_padding_mask)
         x = x.reshape(B, A, T, D)
         return x
 
@@ -224,7 +245,7 @@ class EncoderBlock(nn.Module):
 class DecoderBlock(nn.Module):
     def __init__(self, d_model: int, num_heads: int, d_ff: int | None = None, dropout: float = 0.1):
         super().__init__()
-        self.attn_t = SelfAttentionBlockTime(d_model, num_heads, d_ff, dropout)
+        self.attn_t = SelfAttentionBlockTime(d_model, num_heads, d_ff, dropout, is_causal=True)
         self.attn_a = SelfAttentionBlockAgents(d_model, num_heads, d_ff, dropout)
         self.cross_attn = CrossAttentionBlockAgents(d_model, num_heads, d_ff, dropout)
     
@@ -238,7 +259,7 @@ class DecoderBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
-        x = self.attn_t(x, x_padding_mask, is_causal=True)
+        x = self.attn_t(x, x_padding_mask)
         x = self.attn_a(x, x_padding_mask)
         x = self.cross_attn(x, z, z_padding_mask)
         return x
