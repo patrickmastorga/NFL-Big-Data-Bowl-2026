@@ -165,7 +165,7 @@ class SelfAttentionBlockTime(nn.Module):
         if self.is_causal:
             mask = self.causal_mask[:T, :T] # type: ignore
             print(mask)
-            x = self.self_attn(x, x, x_padding_mask, ) # type: ignore
+            x = self.self_attn(x, x, x_padding_mask) # type: ignore
             print(f'causal: {torch.isnan(x).any().item()}')
         else:
             x = self.self_attn(x, x, x_padding_mask)
