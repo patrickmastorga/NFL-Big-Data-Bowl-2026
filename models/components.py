@@ -164,8 +164,7 @@ class SelfAttentionBlockTime(nn.Module):
         # preform attention and reshape
         if self.is_causal:
             mask = self.causal_mask[:T, :T] # type: ignore
-            print(mask)
-            x = self.self_attn(x, x, x_padding_mask, mask) # type: ignore
+            x = self.self_attn(x, x, x_padding_mask, mask)
             print(f'causal: {torch.isnan(x).any().item()}')
         else:
             x = self.self_attn(x, x, x_padding_mask)
@@ -243,6 +242,7 @@ class EncoderBlock(nn.Module):
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
         x = self.attn_t(x, x_padding_mask)
+        print(f'enc: {torch.isnan(x).any().item()}')
         x = self.attn_a(x, x_padding_mask)
         return x
 
