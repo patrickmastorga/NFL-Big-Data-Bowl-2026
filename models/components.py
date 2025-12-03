@@ -159,6 +159,7 @@ class SelfAttentionBlockTime(nn.Module):
         """
         B, A, T, D = x.shape
         # collapse the agents and batch dimension together
+        print('Hello, World! Time')
         x = x.reshape(B*A, T, D)
         x_padding_mask = x_padding_mask.reshape(B*A, T)
         # preform attention and reshape
@@ -259,6 +260,7 @@ class DecoderBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
+        print('Hello, World!')
         x = self.attn_t(x, x_padding_mask)
         print(f'attn_t: {torch.isnan(x).any().item()}')
         x = self.attn_a(x, x_padding_mask)
