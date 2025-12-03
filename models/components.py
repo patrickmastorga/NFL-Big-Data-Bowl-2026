@@ -83,7 +83,7 @@ class DualTemporalEncoder(nn.Module):
             embeddings (torch.Tensor): input tensor with temporal encodings added along the T axis
         """
         B, A, T, D = x.shape
-        time_elapsed_enc = self.encodings[:T].unsqueeze(0).unsqueeze(0).expand(B, A, T, -1) # type: ignore
+        time_elapsed_enc = self.encodings[:T].unsqueeze(0).unsqueeze(0).expand(B, A, -1, -1) # type: ignore
         time_remain_enc = self.encodings[time_remain] # type: ignore
         x = x + torch.cat([time_elapsed_enc, time_remain_enc], dim=3)
         return x
@@ -185,7 +185,7 @@ class CrossAttentionBlockAgents(nn.Module):
         """
         Args:
             x (torch.Tensor): a tensor of shape (B, A, T, D), where T is the sequence we are attending over
-            m (torch.Tensor) a tensor of shape (B, S, D) where 1 is the sequence each agent in x is attending over
+            m (torch.Tensor) a tensor of shape (B, S, D) where S is the sequence each agent in x is attending over
             m_padding_mask (torch.Tensor): a binary tensor of shape (B, S) where True means the corresponding entry in m is padding
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
@@ -195,7 +195,7 @@ class CrossAttentionBlockAgents(nn.Module):
 
         # collapse the time and batch dimension together
         x = x.permute(0, 2, 1, 3).reshape(B*T, A, D)
-        # repeat memory for each time step T and cllapse with batch
+        # repeat memory for each time step T and collapse with batch
         m = m.unsqueeze(1).expand(-1, T, -1, -1).reshape(B*T, S, D)
         m_padding_mask = m_padding_mask.unsqueeze(1).expand(-1, T, -1).reshape(B*T, S)
         # preform attention and reshape

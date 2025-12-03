@@ -36,9 +36,9 @@ class Encoder(nn.Module):
     """
     def __init__(self):
         super().__init__()
-        self.feature_enc = FeatureEncoder(D_MODEL, N_PLAYER_ROLES + 1) # 1 for each role + 1 for the ball landing location
+        self.feature_enc = FeatureEncoder(D_MODEL, N_PLAYER_ROLES)
         self.temporal_enc = TemporalEncoder(D_MODEL)
-        self.summary_tokens = nn.Embedding(N_PLAYER_ROLES + 1, D_MODEL)
+        self.summary_tokens = nn.Embedding(N_PLAYER_ROLES, D_MODEL)
         self.layers = nn.ModuleList([EncoderBlock(D_MODEL, N_HEADS) for _ in range(N_ENC_LAYERS)])
     
     def forward(self, x: torch.Tensor, x_padding_mask: torch.Tensor, roles: torch.Tensor, roles_padding_mask: torch.Tensor) -> torch.Tensor:
@@ -127,8 +127,8 @@ class Decoder(nn.Module):
         # encode x into a tensor of embeddings
         x = self.feature_enc(x, roles)
         x = self.temporal_enc(x, time_remain) # (B, P, T, D)
-        # transform tensor with encoder blocks
-        for i in range(N_ENC_LAYERS):
+        # transform tensor with decoder blocks
+        for i in range(N_DEC_LAYERS):
             x = self.layers[i](x, z, x_padding_mask, z_padding_mask)
         # compute predicted outputs
         residual = self.to_residual(x)
