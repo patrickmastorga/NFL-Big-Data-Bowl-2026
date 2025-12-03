@@ -240,6 +240,9 @@ class DecoderBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
+        print('decoderblock')
+        print(x.shape)
+        print(x_padding_mask.shape)
         x = self.attn_t(x, x_padding_mask, is_causal=True)
         x = self.attn_a(x, x_padding_mask)
         x = self.cross_attn(x, z, z_padding_mask)
