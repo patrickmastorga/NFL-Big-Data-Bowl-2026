@@ -178,5 +178,7 @@ class BigDataBowlModelV1(nn.Module):
         z_padding_mask = torch.cat([torch.zeros((B, 1), dtype=torch.bool, device=z.device), roles_padding_mask], dim=1) # (B, A + 1)
         # compute predictions
         roles_S = roles[:, :P] # (B, P)
+        print(traj_S.shape)
+        print(traj_S_padding_mask.shape)
         prediction = self.decoder(traj_S, traj_S_padding_mask, z, z_padding_mask, time_remain, roles_S)
         return prediction
