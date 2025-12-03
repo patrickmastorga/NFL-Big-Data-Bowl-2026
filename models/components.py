@@ -140,6 +140,8 @@ class SelfAttentionBlockTime(nn.Module):
             transformed (torch.Tensor): a transformed tensor of shape (B, A, T, D)
         """
         B, A, T, D = x.shape
+        print(x.shape)
+        print(x_padding_mask.shape)
         # collapse the agents and batch dimension together
         x = x.reshape(B*A, T, D)
         x_padding_mask = x_padding_mask.reshape(B*A, T)

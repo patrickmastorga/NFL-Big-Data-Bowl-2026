@@ -128,6 +128,8 @@ class Decoder(nn.Module):
         x = self.feature_enc(x, roles)
         x = self.temporal_enc(x, time_remain) # (B, P, T, D)
         # transform tensor with decoder blocks
+        print(x.shape)
+        print(x_padding_mask.shape)
         for i in range(N_DEC_LAYERS):
             x = self.layers[i](x, z, x_padding_mask, z_padding_mask)
         # compute predicted outputs
