@@ -185,7 +185,7 @@ class BigDataBowlModelV1(nn.Module):
         ball_enc = self.ball_landing_mlp(ball_landing)       # (B, D)
         print(f'ball_enc: {torch.isnan(ball_enc).any().item()}')
         z = torch.cat([ball_enc.unsqueeze(1), z], dim=1)     # (B, A + 1, D)
-        print(f'x: {torch.isnan(x).any().item()}')
+        print(f'z: {torch.isnan(z).any().item()}')
         z_padding_mask = torch.cat([torch.zeros((B, 1), dtype=torch.bool, device=z.device), roles_padding_mask], dim=1) # (B, A + 1)
         print(f'z_padding_mask: {torch.isnan(z_padding_mask).any().item()}')
         # compute predictions
