@@ -123,17 +123,11 @@ class Decoder(nn.Module):
         Returns:
             prediction (torch.Tensor): a tensor of shape (B, A, T, 2) of predicted positions
         """
-        print('decoder1')
-        print(x.shape)
-        print(x_padding_mask.shape)
         pos = x
         # encode x into a tensor of embeddings
         x = self.feature_enc(x, roles)
         x = self.temporal_enc(x, time_remain) # (B, P, T, D)
         # transform tensor with decoder blocks
-        print('decoder2')
-        print(x.shape)
-        print(x_padding_mask.shape)
         for i in range(N_DEC_LAYERS):
             x = self.layers[i](x, z, x_padding_mask, z_padding_mask)
         # compute predicted outputs
@@ -184,8 +178,5 @@ class BigDataBowlModelV1(nn.Module):
         z_padding_mask = torch.cat([torch.zeros((B, 1), dtype=torch.bool, device=z.device), roles_padding_mask], dim=1) # (B, A + 1)
         # compute predictions
         roles_S = roles[:, :P] # (B, P)
-        print('v1')
-        print(traj_S.shape)
-        print(traj_S_padding_mask.shape)
-        prediction = self.decoder(traj_S, traj_S_padding_mask, z, z_padding_mask, time_remain, roles_S)
+        prediction = self.decoder(traj_S, z, traj_S_padding_mask, z_padding_mask, time_remain, roles_S)
         return prediction
