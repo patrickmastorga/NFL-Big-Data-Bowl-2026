@@ -124,6 +124,15 @@ class AttentionBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, S1, D)
         """
+        print(x.shape)
+        print(m.shape)
+        if m_padding_mask is not None:
+            print(m_padding_mask.shape)
+        print(attn_mask)
+        if (x.abs() > 1e6).any():
+            print("HUGE values in x:", x.max())
+        if (m.abs() > 1e6).any():
+            print("HUGE values in m:", m.max())
         x_attn, _ = self.attn.forward(x, m, m, key_padding_mask=m_padding_mask, attn_mask=attn_mask)
         if torch.isnan(x_attn).any().item():
             print(x_attn)
