@@ -124,8 +124,9 @@ class AttentionBlock(nn.Module):
         Returns:
             transformed (torch.Tensor): a transformed tensor of shape (B, S1, D)
         """
-        x_attn, _ = self.attn(x, m, m, key_padding_mask=m_padding_mask, attn_mask=attn_mask)
+        x_attn, _ = self.attn.forward(x, m, m, key_padding_mask=m_padding_mask, attn_mask=attn_mask)
         if torch.isnan(x_attn).any().item():
+            print(x_attn)
             raise RuntimeError("NAN")
         x = self.layer_norm1(x + x_attn)
         x_ff = self.feed_forward(x)
