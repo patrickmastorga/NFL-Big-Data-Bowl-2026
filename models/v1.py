@@ -130,7 +130,7 @@ class Decoder(nn.Module):
         # transform tensor with decoder blocks
         print('Hello World!')
         for i in range(N_DEC_LAYERS):
-            x = self.layers[i](x, z, x_padding_mask, z_padding_mask)
+            x = self.layers[i].forward(x, z, x_padding_mask, z_padding_mask)
         # compute predicted outputs
         residual = self.to_residual(x)
         return pos + residual
